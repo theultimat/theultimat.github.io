@@ -181,7 +181,6 @@ window.addEventListener("load", () => {
 
     window.requestAnimationFrame(updateAndDraw);
 
-    /*
     document.querySelectorAll("a[href^=\"#\"]").forEach(link => {
         link.addEventListener("click", e => {
             e.preventDefault();
@@ -191,7 +190,7 @@ window.addEventListener("load", () => {
         });
     });
 
-    document.querySelectorAll("#skills h2").forEach(header => {
+    document.querySelectorAll("#projects h2").forEach(header => {
         const wrapper = header.nextElementSibling;
         const content = wrapper.firstElementChild;
 
@@ -217,5 +216,4 @@ window.addEventListener("load", () => {
             }
         });
     });
-    */
 });

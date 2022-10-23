@@ -92,8 +92,8 @@ h1, h2 {
 #splash > ul > li > a {
     color: #f98a05;
     padding: 10px 15px;
-    /* width: 11rem; */
-    width: 100%;
+    width: 12rem;
+    /* width: 100%; */
     display: inline-block;
     text-decoration: none;
     position: relative;
@@ -154,7 +154,7 @@ h1, h2 {
 
 #about img {
     max-width: 35%;
-    border-radius: 5%;
+    border-radius: 4px;
     float: right;
     margin-left: 1.75rem;
     margin-right: 1rem;
@@ -165,11 +165,11 @@ h1, h2 {
     margin-top: 0.6rem;
 }
 
-#skills h2 {
+#projects h2 {
     cursor: pointer;
 }
 
-#skills h2:before {
+#projects h2:before {
     color: #f98a05;
     content: "\276f";
     margin-right: 0.5rem;
@@ -177,7 +177,7 @@ h1, h2 {
     display: inline-block;
 }
 
-#skills h2.open:before {
+#projects h2.open:before {
     transform: rotate(90deg);
 }
 
@@ -189,6 +189,24 @@ h1, h2 {
 
 .toggle-slide {
     margin-top: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+img.project-img {
+    width: 100%;
+    max-width: 40%;
+    order: 1;
+    border-radius: 4px;
+    margin: 0;
+}
+
+.project-info {
+    width: 100%;
+    max-width: 60%;
+    padding-right: 1rem;
 }
 
 @media screen and (max-width: 768px) {
@@ -209,5 +227,20 @@ h1, h2 {
     #about img {
         max-width: 100%;
         margin-right: 0;
+    }
+
+    .toggle-slide {
+        flex-direction: column;
+    }
+
+    img.project-img {
+        order: 0;
+        max-width: 100%;
+        margin-bottom: 1rem;
+    }
+
+    .project-info {
+        max-width: 100%;
+        padding-right: 0;
     }
 }
