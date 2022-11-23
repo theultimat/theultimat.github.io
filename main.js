@@ -190,7 +190,7 @@ window.addEventListener("load", () => {
         });
     });
 
-    document.querySelectorAll("#projects h2").forEach(header => {
+    document.querySelectorAll("#skills h2").forEach(header => {
         const wrapper = header.nextElementSibling;
         const content = wrapper.firstElementChild;
 
