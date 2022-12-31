@@ -67,12 +67,23 @@ h1, h2, h3 {
     text-align: center;
 }
 
-#splash > h1 {
-    font-size: 5em;
-    letter-spacing: 0.035em;
-    word-spacing: 0.2em;
+#splash > h1, #splash > h2 {
     text-shadow: 0px 0px 4px #000e19;
     color: #f2f6f9;
+}
+
+#splash > h1 {
+    font-size: 5em;
+    word-spacing: 0.2em;
+    letter-spacing: 0.035em;
+}
+
+#splash > h2 {
+    font-size: 1.25em;
+    letter-spacing: 0.4em;
+    word-spacing: 0.6em;
+    margin-top: -1rem;
+    margin-bottom: 0.75rem;
 }
 
 #splash > ul {
@@ -213,6 +224,11 @@ h1, h2, h3 {
 
 .content ul > li::marker {
     color: #f98a05;
+}
+
+p.last-updated {
+    font-size: 0.9em;
+    color: #aaa;
 }
 
 @media screen and (max-width: 768px) {
