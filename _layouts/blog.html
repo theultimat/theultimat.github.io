@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang }}">
+    <head>
+        {% include head_common.html %}
+
+        <title>Blog - {{ site.title }}</title>
+    </head>
+    <body>
+        {% include navbar.html %}
+        <div class="content-wrapper" id="main-content">
+            <div class="content">
+                <h1>Latest Post</h1>
+                {% for post in site.posts limit: 1 %}
+                    {% include post_preview.html %}
+                {% endfor %}
+                <h1>Older Posts</h1>
+                <div class="blog-posts">
+                    {% for post in site.posts offset: 1 %}
+                        {% include post_thumbnail.html %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% include footer.html %}
+    </body>
+</html>

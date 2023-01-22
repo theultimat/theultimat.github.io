@@ -189,31 +189,4 @@ window.addEventListener("load", () => {
             });
         });
     });
-
-    document.querySelectorAll("#skills h2").forEach(header => {
-        const wrapper = header.nextElementSibling;
-        const content = wrapper.firstElementChild;
-
-        function openWrapper() {
-            const height = content.getBoundingClientRect().height;
-            const margin = 1.75 * parseFloat(getComputedStyle(wrapper).fontSize);
-            wrapper.style.height = `${height + margin}px`;
-        }
-
-        if (wrapper.classList.contains("open")) {
-            openWrapper();
-        }
-
-        header.addEventListener("click", e => {
-            if (wrapper.classList.contains("open")) {
-                wrapper.style.height = "0px";
-                wrapper.classList.remove("open");
-                header.classList.remove("open");
-            } else {
-                openWrapper();
-                wrapper.classList.add("open");
-                header.classList.add("open");
-            }
-        });
-    });
 });
