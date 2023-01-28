@@ -25,6 +25,7 @@ let numFastStars = 0;
 let canvas = null;
 let context = null;
 let lastDrawTime = null;
+let simulate = true;
 
 function rand(min, max) {
     return Math.random() * (max - min) + min;
@@ -151,7 +152,9 @@ function updateAndDraw(time) {
     drawParticles();
     drawStars();
 
-    window.requestAnimationFrame(updateAndDraw);
+    if (simulate) {
+        window.requestAnimationFrame(updateAndDraw);
+    }
 }
 
 function addMissingStars() {
@@ -174,7 +177,6 @@ window.addEventListener("load", () => {
         addMissingStars();
     }
 
-
     window.addEventListener("resize", resize);
 
     resize();
@@ -189,4 +191,26 @@ window.addEventListener("load", () => {
             });
         });
     });
+
+    function updateSimulateFlag() {
+        const rect = canvas.getBoundingClientRect();
+        const viewHeight = Math.max(
+            document.documentElement.clientHeight,
+            window.innerHeight
+        );
+
+        const visible = !(rect.bottom < 0 || rect.top - viewHeight >= 0);
+
+        if (visible && !simulate) {
+            lastDrawTime = null;
+            window.requestAnimationFrame(updateAndDraw);
+        }
+
+        simulate = visible;
+    }
+
+    window.addEventListener("scroll", updateSimulateFlag);
+    window.addEventListener("focus", updateSimulateFlag);
+
+    updateSimulateFlag();
 });
