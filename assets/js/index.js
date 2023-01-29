@@ -199,7 +199,7 @@ window.addEventListener("load", () => {
             window.innerHeight
         );
 
-        const visible = !(rect.bottom < 0 || rect.top - viewHeight >= 0);
+        const visible = !(rect.bottom <= 0 || rect.top - viewHeight >= 0);
 
         if (visible && !simulate) {
             lastDrawTime = null;
