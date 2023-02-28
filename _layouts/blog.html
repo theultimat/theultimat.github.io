@@ -18,6 +18,12 @@
                     {% for post in site.posts offset: 1 %}
                         {% include post_thumbnail.html %}
                     {% endfor %}
+
+                    {% assign num_mod_3 = site.posts.size | minus: 1 | modulo: 3 %}
+                    {% assign num_fill = 3 | minus: num_mod_3 %}
+                    {% for i in (1..num_fill) %}
+                        {{ '<div class="post-thumb"></div>' }}
+                    {% endfor %}
                 </div>
             </div>
         </div>
