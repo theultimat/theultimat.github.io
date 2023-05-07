@@ -253,7 +253,7 @@ hr {
     margin: 0 auto;
 }
 
-.blog-posts {
+.blog-posts, .projects-posts {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -341,6 +341,12 @@ h1.post-title {
     font-size: 3em;
     line-height: 1.2em;
     margin-bottom: 0.5rem;
+    display: flex;
+}
+
+h1.post-title > .github-link {
+    margin-left: auto;
+    color: #444;
 }
 
 .highlighter-rouge {

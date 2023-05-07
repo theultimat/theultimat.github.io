@@ -12,7 +12,7 @@
             <h2>Firmware Engineer</h2>
             <ul id="nav">
                 <li><a href="#about">About</a></li>
-                <li><a href="#blog">Blog</a></li>
+                <li><a href="#projects">Projects</a></li>
                 <li><a href="#contact">Contact</a></li>
             </ul>
         </div>
@@ -25,19 +25,27 @@
                 <img src="/assets/img/me.jpg" />
                 <p>Hi, I'm Matt. I have professional programming experience in the areas of digital subscriber line and machine learning, primarily working with C, C++, Python, and assembly on multi-core embedded platforms. I'm currently working as a Staff Firmware Engineer at <a href="https://www.broadcom.com/" target="_blank">Broadcom</a>.</p>
                 <p>In 2017 I completed my MEng in Computer Science with first class honours at the <a href="https://www.bristol.ac.uk/" target="_blank">University of Bristol</a>. My final dissertation project explored real-time hair simulation and rendering on the GPU.</p>
-                <p>If you'd like to get in contact please reach out to me at <a href="mailto:ping.matt.woodhouse+about@gmail.com">ping.matt.woodhouse@gmail.com</a>.
+                <p>If you'd like to get in contact please reach out to me at <a href="mailto:contact@mattwoodhouse.com">contact@mattwoodhouse.com</a>.
             </div>
         </div>
-        <div class="screen" id="blog">
+        <div class="screen" id="projects">
             <div class="content">
                 <div class="content-header">
-                    <h1>Blog</h1>
+                    <h1>Projects</h1>
                     <a href="#main" class="back-to-top"><i class="fa-solid fa-arrow-up-long"></i></a>
                 </div>
-                <p>Check out some of the most recent posts below, or view the full blog <a href="/blog/">here</a>.</p>
-                {% for post in site.posts limit: 2 %}
-                    {% include post_preview.html %}
-                {% endfor %}
+                <p>The majority of my professional work has been on proprietry systems, so unfortunately I'm unable to share it online. However, if you're interested, you can check out some of my hobby projects below.</p>
+                <div class="projects-posts">
+                    {% for post in site.posts %}
+                        {% include post_thumbnail.html %}
+                    {% endfor %}
+
+                    {% assign num_mod_3 = site.posts.size | minus: 1 | modulo: 3 %}
+                    {% assign num_fill = 3 | minus: num_mod_3 %}
+                    {% for i in (1..num_fill) %}
+                        {{ '<div class="post-thumb"></div>' }}
+                    {% endfor %}
+                </div>
             </div>
         </div>
         <div class="screen" id="contact">
@@ -46,8 +54,8 @@
                     <h1>Contact</h1>
                     <a href="#main" class="back-to-top"><i class="fa-solid fa-arrow-up-long"></i></a>
                 </div>
-                <p>If you feel my skill set matches your requirements and you'd like to discuss working together I'd love to hear from you. You can reach me by email at <a href="mailto:ping.matt.woodhouse+contact@gmail.com">ping.matt.woodhouse@gmail.com</a>. If you're interested in a copy of my CV please contact me using the email above and I'll send a copy through.</p>
-                <p>The majority of my professional work has been closed-source, but to get an idea for how I program you can browse through some of my hobby projects on GitHub <a href="https://github.com/theultimat" target="_blank">here</a>.</p>
+                <p>If you feel my skill set matches your requirements and you'd like to discuss working together I'd love to hear from you. You can reach me by email at <a href="mailto:contact@mattwoodhouse.com">contact@mattwoodhouse.com</a>. If you're interested in a copy of my CV please contact me using the email above and I'll send a copy through.</p>
+                <p>As stated earlier, the majority of my professional work has been closed-source, but to get an idea for how I program you can browse through some of my hobby projects on <a href="https://github.com/theultimat" target="_blank">GitHub</a>.</p>
             </div>
         </div>
         {% include footer.html %}
