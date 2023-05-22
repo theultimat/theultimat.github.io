@@ -367,6 +367,12 @@ code {
     font-size: 0.9em;
 }
 
+.post-content img:not(.post-banner) {
+    width: 49.5%;
+    border-radius: 4px;
+    margin: 0 auto;
+}
+
 @media screen and (max-width: 768px) {
     #splash > ul > li {
         display: block;
@@ -388,6 +394,10 @@ code {
     }
 
     .post-thumb {
+        width: 100%;
+    }
+
+    .post-content img:not(.post-banner) {
         width: 100%;
     }
 }
