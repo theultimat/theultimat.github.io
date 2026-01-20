@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fix=no">
+
+        <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16x16.png">
+        <link rel="stylesheet" href="/css/main.css">
+
+        <title>Idli: A Processor for Tiny Tapeout - Matt Woodhouse</title>
+    </head>
+    <body>
+        <nav>
+            <div class="nav-wrapper">
+                <a href="/"><img src="/img/logo.png" alt="Logo" /></a>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="/now">Now</a></li>
+                </ul>
+            </div>
+        </nav>
+        <article>
+            <header>
+                <h1>Idli: A Processor for Tiny Tapeout</h1>
+                <div class="date-info">
+                    <p>Created: 2025-11-24</p>
+                    <p>Updated: 2026-01-20</p>
+                </div>
+            </header>
+
+            <p>What does it take to design and build your own processor? This series of posts
+serves as a retrospective and documents my descent into the depths of computer
+architecture and digital design.</p>
+<p>Links to the other parts of this series:</p>
+<ul>
+<li><a href="#intro">Introduction</a></li>
+<li>Defining the Architecture (Coming soon!)</li>
+<li>Instruction Set Details (Coming soon!)</li>
+<li>Behavioural Model (Coming soon!)</li>
+<li>Implementing the Microarchitecture (Coming soon!)</li>
+<li>Verification (Coming soon!)</li>
+<li>Conclusion (Coming soon!)</li>
+</ul>
+<div id="intro"></div>
+
+<h1>Objectives</h1>
+<p>An <a href="https://en.wikipedia.org/wiki/Instruction_set_architecture">Instruction Set Architecture</a>
+or ISA can be thought of as the interface between the hardware that implements a
+design and the software that runs on it. This includes things like the list of
+supported instructions, the number of registers available, how wide
+they are, and so on. An example of an architecture would be <a href="https://en.wikipedia.org/wiki/RISC-V">RISC-V</a>, which is largely unique in that it's free and open-source.</p>
+<p>The <a href="https://en.wikipedia.org/wiki/Microarchitecture">microarchitecture</a>
+describes a specific implementation of the architecture, or what actually gets
+implemented in the <a href="https://en.wikipedia.org/wiki/Hardware_description_language">HDL</a>
+and etched into silicon to form the final chip. An example of this would be
+<a href="https://github.com/Wren6991/Hazard3">Hazard3</a>, the RISC-V processor in the
+<a href="https://www.raspberrypi.com/products/rp2350/">RP2350</a> by Raspberry Pi.</p>
+<p>My goal with this project was to design and implement my own ISA and have some
+kind of physical implementation of it actually running programs written in its
+own assembly language.</p>
+<h1>But Why?</h1>
+<p>The main reason for wanting to do this is that it's extremely compelling!
+While studying at university I took the Advanced
+Computer Architecture module, which culminated in each student implementing a
+cycle-accurate model of their own superscalar out-of-order processor. I really
+enjoyed this, and have been wanting to go back and do it "properly" ever since,
+especially after having gained some real world experience in the field.</p>
+<p>Personally, I also find that while understanding the theory is important, the only
+way to truly get to grips with a concept is to have a go at using or implementing
+it. Even things that I thought I understood very well often had surprisingly intricate
+details and edge cases that I hadn't considered until I dived in and got my hands
+dirty, so I think there's definite value in going through the whole
+process from start of finish yourself.</p>
+<p>This is also why I didn't want to implement a RISC-V processor, even though it
+would have been easier and saved me considerable time on things like tooling.
+While it still would have taught me a lot about microarchitectural design decisions,
+I would be completely unaware of the trade-offs that you need to make when designing
+the architecture itself. And yes, I know they justify many of the architectural
+decisions in the <a href="https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html">RISC-V architecture manual</a>,
+but I think making these decisions for myself, and seeing whether I agree with
+their conclusions, is far more valuable.</p>
+<p>It's also just really cool!</p>
+<h1>How?</h1>
+<p>Building and <a href="https://en.wikipedia.org/wiki/Tape-out">taping out</a> a processor is
+an extremely expensive and time consuming process. I obviously wasn't going to be
+spending millions on this, so needed to explore some less conventional options.</p>
+<p>One approach is to build the processor by hand using
+<a href="https://en.wikipedia.org/wiki/Transistor%E2%80%93transistor_logic">Transistor-Transistor Logic</a>
+(TTL) chips and breadboards or custom PCBs. Ultimately, I decided against this
+approach for Idli as it felt a bit too restrictive on the kinds of microarchitectures
+that I'd be able to work with. Having said that, I very much intend to come
+back to TTL in the future with a simpler design as it looks like an
+extremely satisfying process.</p>
+<p>Using an <a href="https://en.wikipedia.org/wiki/Field-programmable_gate_array">FPGA</a>
+is another approach which is frequently taken by hobbyists
+designing their own hardware. One particularly impressive example of this is
+<a href="https://mrisc32.bitsnbites.eu/">MRISC32</a>, a custom processor by Marcus Geelnard,
+which even has its own GCC and DOOM port. However, the microarchitecural
+decisions you make when designing for an FPGA vs <a href="https://en.wikipedia.org/wiki/Application-specific_integrated_circuit">ASIC</a>
+are quite different, and I wanted to focus on the latter, so decided against
+targeting an FPGA.</p>
+<p>I eventually landed upon <a href="https://tinytapeout.com/">Tiny Tapeout</a> as my best
+option. This is a shuttle program where different groups or individuals purchase
+tiles of space on a silicon wafer in which to build their designs, which can then
+be individually enabled at runtime. This brings down the cost of taping out
+significantly, as you're sharing part of the expense across all the different
+designers that purchased one or more tiles. There's also a whole host of extremely
+impressive projects to browse though that have been taped out in
+<a href="https://tinytapeout.com/chips/">previous shuttle runs</a>.</p>
+<p>Another benefit of Tiny Tapeout is that your design has certain external
+restrictions placed upon it, most notably the area available for your design and
+the number of input and output pins it can access. As someone who frequently makes
+grand plans that I have no hope of actually completing, these limitations help me to
+keep the scope from ballooning beyond what I have the time to realistically
+implement. Working within constraints is also a great source of creativity and a
+fun way to explore new and less conventional ideas that may not make sense elsewhere.</p>
+<p>I'm very fortunate in that I work in this area professionally, so I'm already
+familiar with the tools of the trade and have access to many coworkers who are
+far more experienced than me off whom I can bounce some ideas. This has been
+invaluable as a source of knowledge and inspiration, but for those who don't have
+the same opportunity I'd highly recommend reading through the threads on the comp.arch
+usenet group (I do this via <a href="https://www.thunderbird.net/en-GB/">Thunderbird</a>),
+as many of the regulars have a huge amount of experience in this area.</p>
+<h1>Why the Name?</h1>
+<p>As anyone familiar with software or hardware development knows, the hardest
+part of any project is coming up with a name for whatever it is you're making.
+After struggling with this for a while, I attempted to explain it to my
+(extremely patient) girlfriend, who suggested the name
+<a href="https://en.wikipedia.org/wiki/Idli">Idli</a>.</p>
+<p>Idli is a tasty South Indian food that also has the benefit of looking kind of
+like a fleet little flying saucers. As my processor needed to be simple
+enough to be achievable in my spare time and fit into as few tiles as possible
+for Tiny Tapeout, she thought Idli was a good fit as the food itself is
+"small and cute." You just can't argue with that, and thus Idli was born.</p>
+<h1>Onwards</h1>
+<p>With the hardest part of the project out of the way, the next step was to
+actually come up with a viable architecture given the restrictions on the design
+space. So without further ado, let's dig in (Coming soon!).</p>
+
+            <footer>
+                <p>Generated: 2026-01-20 20:18:03</p>
+                <p>&copy; Matt Woodhouse 2026</p>
+            </footer>
+        </article>
+    </body>
+</html>
