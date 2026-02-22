@@ -79,6 +79,7 @@ pre {
     color: var(--colour-bg);
     border-radius: 3px;
     line-height: 1.4em;
+    overflow: scroll;
 }
 
 code {
