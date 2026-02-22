@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fix=no">
+
+        <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16x16.png">
+        <link rel="stylesheet" href="/css/main.css">
+
+        <title>The Beauty of VPTERNLOGD - Matt Woodhouse</title>
+    </head>
+    <body>
+        <nav>
+            <div class="nav-wrapper">
+                <a href="/"><img src="/img/logo.png" alt="Logo" /></a>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="/now">Now</a></li>
+                </ul>
+            </div>
+        </nav>
+        <article>
+            <header>
+                <h1>The Beauty of VPTERNLOGD</h1>
+                <div class="date-info">
+                    <p>Created: 2026-02-19</p>
+                    <p>Updated: 2026-02-22</p>
+                </div>
+            </header>
+
+            <p><a href="https://en.wikipedia.org/wiki/AVX-512">AVX-512</a> is one of the more recent
+<a href="https://en.wikipedia.org/wiki/Single_instruction,_multiple_data">SIMD</a>
+extensions for <a href="https://en.wikipedia.org/wiki/X86">x86</a>. The most obvious
+difference to prior versions of AVX is the doubling of the SIMD register width
+to 512 bits, allowing for up to 64x8b or 16x32b operations in a single instruction.
+It has received a certain amount of justified
+<a href="https://www.realworldtech.com/forum/?threadid=193189&amp;curpostid=193190">criticism</a>,
+along with some lackluster implementations, but I wanted to write a little
+note about one instruction that I've found particularly useful.</p>
+<p>I recently had the opportunity to dig into AVX-512 at work while doing some
+optimisation of machine learning kernels. Having worked with older AVX and SSE
+intrinsics previously, I headed over to fantastic
+<a href="https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#">Intel Intrinsics Guide</a> to have a quick look through some of the new instructions. After recovering
+from my shock at the sheer number of new instructions that had been added (it's
+lucky x86 has a variable length encoding!) there were two things that caught my
+eye.</p>
+<p>First up, masks. One of the big annoyances of using SIMD instructions is dealing
+with loops that don't cleanly unroll due to the number of iterations being a
+non-exact multiple of the register width. With AVX-512, almost all instructions
+(including loads and stores!) have <code>mask</code> and <code>maskz</code> variants which are a neat way
+of addressing the problem. The ISA introduces eight new mask registers, <code>k0</code> to
+<code>k7</code>, which hold a single bit for each SIMD lane of the main <code>zmm</code> registers.
+One of these mask registers can then be passed to the <code>mask</code> instructions along
+with an extra <code>src</code> register. When the <em>i</em>-th bit of the mask is zero, the result
+of the instruction will be suppressed for lane <em>i</em>, and the result will contain
+<code>src[i]</code> instead. <code>maskz</code> is similar, except that instead of taking the value
+from <code>src</code> zero is used instead. These make unrolling and conditional evaluation
+of operations far more pleasant than in prior versions of the architecture.</p>
+<p>The second thing, and main focus of this article, are the <code>ternarylogic</code>
+intrinsics which map to the <code>vpternlogd</code> instruction. The intrinsics guide describes
+<a href="https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ig_expand=6779,6779&amp;text=mm512*ternary*epi32">one of these</a>
+as follows:</p>
+<blockquote>
+<p>Bitwise ternary logic that provides the capability to implement any three-operand
+binary function; the specific binary function is specified by value in imm8.
+For each bit in each packed 32-bit integer, the corresponding bit from a, b,
+and c are used according to imm8, and the result is written to the
+corresponding bit in dst.</p>
+</blockquote>
+<p>Latency and throughput are listed as one and half respectively. Any three-operand
+binary function with high throughput and minimal latency? This all seemed too
+good to be true, which made me wonder: how could this be implemented efficiently
+in hardware?</p>
+<p>My initial thought was that the RTL would need to contain a big lookup table
+describing the operation of each possible boolean function. This is also
+suggested by the pseudocode provided in the documentation, which shows part of a
+case statement with one arm for each of the 255 possible functions selected by
+the eight bit immediate operand.</p>
+<p>While it would be possible to implement the operation in this way, it seemed to
+me that this approach would take up a significant amount of area, meaning there
+was almost certainly something cleverer going on. After pondering this a little,
+I think I figured it out - the eight bit operand <em>is</em> the lookup table, but
+instead of looking up the <em>operation</em> to perform we instead directly look up the
+<em>result</em>.</p>
+<p>As an example, let's take an arbitrary three-operand boolean function,
+<code>out = a &amp; (b | ~c)</code>, and write out its truth table:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">a</th>
+<th style="text-align: center;">b</th>
+<th style="text-align: center;">c</th>
+<th style="text-align: center;">out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
+<p>Interpreting the <code>out</code> column as an 8-bit binary number starting with the
+most-significant bit as the first row, we end up with the value <code>11010000</code>,
+or 208 decimal. If we then plug this in to the <code>vpternlogd</code> instruction as the
+immediate operand it will return the result of our original boolean function.</p>
+<pre><code>// out = a &amp; (b | ~c)
+const auto out = _mm512_ternarylogic_epi32(a, b, c, 208);
+</code></pre>
+<p>So now we know how to derive this magical immediate for any boolean function,
+but how is the instruction actually implemented in the hardware? My theory, as
+mentioned above, is that the immediate <em>is</em> the lookup table, indexed by the
+concatenation of each bit of the three register operands.</p>
+<p>Looking back at our truth table, if we take the first three columns of each row
+and stick them together, we end up with a three bit integer which just so happens
+to be the index of that row in the table counting upwards from row zero at the
+bottom. More succinctly, we can write this in SystemVerilog as:</p>
+<pre><code>function automatic vpternlogd(
+    input zmm         a,
+    input zmm         b,
+    input zmm         c,
+    input logic [7:0] imm
+);
+    zmm out = 'x;
+
+    for (int unsigned i = 0; i &lt; $bits(zmm); i++) begin
+        out[i] = imm[{a[i], b[i], c[i]}];
+    end
+
+    return out;
+endfunction
+</code></pre>
+<p>I obviously don't have access to the RTL of any official implementations of AVX-512,
+so this is something of a guess, but given how neatly it maps to the hardware I
+think there's a decent chance of it at least being on the right track.</p>
+<p>A truly elegant way to implement any three-operand boolean function with a
+single instruction and minimal hardware cost. Beautiful!</p>
+
+            <footer>
+                <p>Generated: 2026-02-22 17:23:34</p>
+                <p>&copy; Matt Woodhouse 2026</p>
+            </footer>
+        </article>
+    </body>
+</html>

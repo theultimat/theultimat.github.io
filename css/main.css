@@ -3,6 +3,8 @@
     --colour-fg: #151517; /* foreground */
     --colour-hl: #f98a05; /* highlight */
     --colour-ll: #909096; /* lowlight */
+    --colour-ta: #e6eaed; /* table alt */
+    --colour-th: #f9e3c7; /* table hover */
 }
 
 * {
@@ -204,3 +206,28 @@ footer {
 .footnote {
     font-size: .8em;
     margin: 0 2em;
+}
+
+table {
+    margin: 1em auto;
+    table-layout: fixed;
+    border-collapse: collapse;
+
+    thead {
+        border-bottom: 1px solid var(--colour-hl);
+    }
+
+    tbody {
+        tr:nth-child(odd) {
+            background: var(--colour-ta);
+        }
+
+        tr:hover {
+            background: var(--colour-th);
+        }
+    }
+
+    th, td {
+        padding: .25em .75em;
+    }
+}
