@@ -1,10 +1,79 @@
+@font-face {
+    font-family: OpenSans;
+    src: url('/font/OpenSans-Regular.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: OpenSansItalic;
+    src: url('/font/OpenSans-Italic.ttf');
+    font-weight: normal;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: OpenSansCondensedBold;
+    src: url('/font/OpenSans_Condensed-Bold.ttf');
+    font-weight: bold;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: SourceCodePro;
+    src: url('/font/SourceCodePro-Regular.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+
 :root {
     --colour-bg: #f2f6f9; /* background */
-    --colour-fg: #151517; /* foreground */
+    --colour-fg: #333333; /* foreground */
     --colour-hl: #f98a05; /* highlight */
     --colour-ll: #909096; /* lowlight */
     --colour-ta: #e6eaed; /* table alt */
     --colour-th: #f9e3c7; /* table hover */
+
+    --font-normal: OpenSans,
+                   -apple-system,
+                   BlinkMacSystemFont,
+                   avenir next,
+                   avenir,
+                   segoe ui,
+                   helvetica neue,
+                   Adwaita Sans,
+                   Cantarell,
+                   Ubuntu,
+                   roboto,
+                   noto,
+                   helvetica,
+                   arial,
+                   sans-serif;
+
+    --font-quote: OpenSansItalic,
+                  Iowan Old Style,
+                  Apple Garamond,
+                  Baskerville,
+                  Times New Roman,
+                  Droid Serif,
+                  Times,
+                  Source Serif Pro,
+                  serif,
+                  Apple Color Emoji,
+                  Segoe UI Emoji,
+                  Segoe UI Symbol;
+
+    --font-title: OpenSansCondensedBold,
+                  var(--font-normal);
+
+    --font-mono: SourceCodePro,
+                 Menlo,
+                 Consolas,
+                 Monaco,
+                 Adwaita Mono,
+                 Liberation Mono,
+                 Lucida Console,
+                 monospace;
 }
 
 * {
@@ -16,28 +85,19 @@
 body {
     background: var(--colour-bg);
     color: var(--colour-fg);
-    font-family: -apple-system,
-                 BlinkMacSystemFont,
-                 avenir next,
-                 avenir,
-                 segoe ui,
-                 helvetica neue,
-                 Adwaita Sans,
-                 Cantarell,
-                 Ubuntu,
-                 roboto,
-                 noto,
-                 helvetica,
-                 arial,
-                 sans-serif;
+    font-family: var(--font-normal);
 }
 
 h1, h2, h3 {
+    font-family: var(--font-title);
+    text-transform: uppercase;
     margin-bottom: .1em;
 }
 
 h1 {
-    font-size: 1.75em;
+    font-size: 2em;
+    letter-spacing: .04em;
+    word-spacing: .075em;
 }
 
 h2 {
@@ -55,8 +115,10 @@ a:hover {
 
 p {
     text-align: justify;
-    margin-bottom: 1em;
-    line-height: 1.3em;
+    margin-bottom: 1.75em;
+    line-height: 1.5em;
+    word-spacing: .05em;
+    letter-spacing: .01em;
 
     code {
         background: var(--colour-fg);
@@ -73,7 +135,7 @@ hr {
 }
 
 pre {
-    margin: 1em;
+    margin: 1.5em 1em;
     padding: 1em;
     background: var(--colour-fg);
     color: var(--colour-bg);
@@ -83,48 +145,39 @@ pre {
 }
 
 code {
-    font-size: .9em;
-    font-family: Menlo,
-                 Consolas,
-                 Monaco,
-                 Adwaita Mono,
-                 Liberation Mono,
-                 Lucida Console,
-                 monospace;
+    font-family: var(--font-mono);
 }
 
 blockquote {
     margin: 1em;
     border-left: 2px dotted var(--colour-hl);
-    font-family: Iowan Old Style,
-                 Apple Garamond,
-                 Baskerville,
-                 Times New Roman,
-                 Droid Serif,
-                 Times,
-                 Source Serif Pro,
-                 serif,
-                 Apple Color Emoji,
-                 Segoe UI Emoji,
-                 Segoe UI Symbol;
+    font-family: var(--font-quote);
 
     p {
         margin-left: 1em;
     }
- }
+}
+
+#main-header {
+    margin: 2em 0 1em 0;
+
+    h1 {
+        font-size: 4.25em;
+        letter-spacing: .1em;
+        word-spacing: .2em;
+        text-align: center;
+    }
+}
 
 nav {
-    background: #000e19;
-    margin-bottom: 1em;
     padding: .25em 0;
-
-    .nav-wrapper {
-        display: flex;
-        justify-content: space-between;
-        margin: 0 auto;
-        width: 100%;
-        max-width: 800px;
-    }
+    display: flex;
+    justify-content: center;
+    font-family: var(--font-title);
+    text-transform: uppercase;
+    font-size: 1.75em;
+    letter-spacing: .1em;
+    margin-bottom: .5em;
 
     ul {
         display: flex;
@@ -137,11 +190,36 @@ nav {
     li {
         display: inline-block;
         margin: 0 .1em;
-        padding: .5em 1.25em;
     }
 
-    img {
-        height: 3.5em;
+    a {
+        display: inline-block;
+        padding: .5em 1.25em;
+        width: 6.5em;
+        text-align: center;
+        position: relative;
+    }
+
+    a:hover {
+        text-decoration: none;
+    }
+
+    a::before {
+        content: "";
+        position: absolute;
+        width: 100%;
+        height: 3px;
+        bottom: 0;
+        left: 0;
+        background-color: var(--colour-hl);
+        visibility: hidden;
+        transform: scaleX(0);
+        transition: all .3s ease-in-out 0s;
+    }
+
+    a:hover::before {
+        visibility: visible;
+        transform: scaleX(1);
     }
 }
 
@@ -157,29 +235,25 @@ article {
 }
 
 header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: .5em;
+    margin-bottom: 1.5em;
 
     h1 {
-        font-size: 2em;
+        font-size: 2.5em;
     }
 
     p {
         margin: .25em 0;
         font-size: .8em;
         color: var(--colour-ll);
-        text-align: right;
-    }
-
-    .date-info {
-        margin-left: .5em;
     }
 }
 
-ul {
+ul, ol {
     margin-left: 1em;
     margin-bottom: 1em;
+}
+
+ul {
     list-style-type: square;
 }
 
@@ -210,12 +284,12 @@ footer {
 }
 
 table {
-    margin: 1em auto;
+    margin: 1.5em auto;
     table-layout: fixed;
     border-collapse: collapse;
 
     thead {
-        border-bottom: 1px solid var(--colour-hl);
+        border-bottom: 2px solid var(--colour-hl);
     }
 
     tbody {
