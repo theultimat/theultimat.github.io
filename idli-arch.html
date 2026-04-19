@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fix=no">
+
+        <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16x16.png">
+        <link rel="stylesheet" href="/css/main.css">
+
+        <title>Idli: Defining the Architecture - Matt Woodhouse</title>
+    </head>
+    <body>
+        <div id="main-header">
+            <h1>Matt Woodhouse</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/about">About</a></li>
+                <li><a href="/now">Now</a></li>
+            </ul>
+        </nav>
+        <article>
+            <header>
+                <h1>Idli: Defining the Architecture</h1>
+                <div class="date-info">
+                    <p>Created: 2026-01-26, Updated: 2026-04-19</p>
+                </div>
+            </header>
+
+            <p>As I mentioned in the <a href="/idli-intro">previous post in this series</a>, the decision
+to use <a href="https://tinytapeout.com/">Tiny Tapeout</a> imposed a number of restrictions
+on the design space of the processor. This post takes a look at what exactly
+these limitations were, and how they informed the design decisions around the
+overall structure of the architecture.</p>
+<h1>Architecture Goals</h1>
+<p>There were two main goals behind the design of Idli, the first of which is that
+at the end of the project I wanted to have a processor that it was actually fun
+to write assembly for. Writing in assembly can at times be quite enjoyable (ARM,
+FirePath, RISC-V) and at other times quite painful (x86), so it was important to
+me that the final <a href="https://en.wikipedia.org/wiki/Instruction_set_architecture">ISA</a>
+fell into the former category.</p>
+<p>Making sure the assembly was pleasant to work with was important for another
+more practical reason: there isn't going to be a compiler! Although I would love
+to come back and write a simple C compiler for Idli at some point (perhaps a
+port of <a href="https://www.bellard.org/tcc/">TCC</a>), I just didn't (and don't) have
+enough time to consider making one at this stage. So given that we're stuck in
+assembly either way it makes sense to at least make it a fun place to be.</p>
+<p>The other goal was to try and get decent performance despite the limitations of
+the platform. I didn't want to sacrifice the usability of the assembly language,
+but also wanted to make sure to include instructions that would complement the
+underlying hardware rather than fight against it. This was one of the key
+motivators for a number of design decisions, so we'll come back to them in more
+detail in the sections below.</p>
+<h1>IO Pins</h1>
+<p>If you can't get instructions or data from memory into your processor it can't
+really do anything, and access to this memory is performed via one or more
+input and output pins. At an extremely high level, with all else being equal,
+the more pins you can use at the same time in parallel the more bits of data you
+can transfer in a single clock cycle, and hence the faster you can operate on it.</p>
+<p>Tiny Tapeout is extremely limited in IO bandwidth. At the time of writing, each
+design has access to the following pins with a maximum output frequency of
+33MHz:</p>
+<ul>
+<li>One clock input.</li>
+<li>One reset input.</li>
+<li>Eight general purpose input pins.</li>
+<li>Eight general purpose output pins.</li>
+<li>Eight general purpose bidirectional pins.</li>
+</ul>
+<p>For full details on the interface see the
+<a href="https://tinytapeout.com/specs/gpio/">technical specification</a>.</p>
+<p>With this in mind it made sense to go with a serial memory using
+<a href="https://en.wikipedia.org/wiki/Serial_Peripheral_Interface">SPI</a>, which in its
+most basic mode uses only four pins:</p>
+<ul>
+<li>Clock signal, SCK.</li>
+<li>Chip select signal, CS.</li>
+<li>Data input, MOSI (Master Out Slave In).</li>
+<li>Data output, MISO (Master In Slave Out).</li>
+</ul>
+<p>In this case, Idli is the master and the memory the slave. I decided to go with
+the Microchip 23LC512, a 64K byte addressable memory which operates at a maximum
+of 20MHz - for full details check out the datasheet, available under documentation
+on the <a href="https://www.microchip.com/en-us/product/23LC512">Microchip website</a>.
+I didn't want to deal with complexities like clock domain crossing, and knew
+there wouldn't be space for an on chip cache, so it initially seemed like the
+clock of the core would also be limited to a maximum of 20MHz.</p>
+<p>With SPI we're only using four pins for the memory interface (three outputs
+and a single input) but as a result we're only able to transfer a single bit
+per cycle which doesn't lend itself to performance. Luckily, we can switch the
+memory into quad mode, SQI, which allows for sending four bits of data per cycle
+at the cost of using two more pins:</p>
+<ul>
+<li>Clock signal, SCK.</li>
+<li>Chip select, CS.</li>
+<li>Four data inputs/outputs, SIO0..SIO3.</li>
+</ul>
+<p>The data pins need to be bidirectional in this mode, so we use four of the
+bidirectional pins on the chip for the bus to the memory, but get the
+benefit of transferring four bits per cycle instead of just one.</p>
+<p>At this point I realised there are still four more bidirectional pins available,
+and it seemed a shame to let them go to waste, so I decided to double up on the
+memories. However, rather than using this to just expand the available storage,
+I instead decided to alternate the nibbles of data between the two memories,
+meaning that rather than data looking like this in one memory:</p>
+<pre><code>| Address | Data |
+|---------+------|
+|  0x1000 | 0xab |
+|  0x1001 | 0xcd |
+|  0x1002 | 0xef |
+|  0x1003 | 0x01 |
+</code></pre>
+<p>It would instead be arranged across two as:</p>
+<pre><code>       MEM_LO                  MEM_HI
+
+| Address | Data |      | Address | Data |
+|---------+------|      |---------+------|
+|  0x1000 | 0xdb |      |  0x1000 | 0xca |
+|  0x1001 | 0x1f |      |  0x1001 | 0x0e |
+</code></pre>
+<p>The idea behind this is to send the same address to both memories, but then
+alternate between the two on each cycle for the data. This has a number of
+benefits:</p>
+<ul>
+<li>The clock frequency can be doubled to 40MHz. Each SQI memory will still be
+  clocked at 20MHz, but by alternating which is being actively transferred to or
+  from each cycle the core can operate twice as fast.</li>
+<li>With the core running twice as fast the signals being sent to the memories can
+  be flopped, meaning glitches will be avoided.</li>
+<li>Memory space is effectively doubled while still having a 16b address.</li>
+</ul>
+<p>This does of course mean the memory is no longer byte addressable, or alternatively
+that the width of a byte is now defined to be 16 bits. This is unconventional,
+but given the benefits listed above and complete freedom with the design it seemed
+too good an opportunity to miss. Plus, it's fun to experiment, so why not!</p>
+<p>One final benefit of using SQI memories is sequential mode. When configured in
+this mode, the memory will automatically increment its internal address register
+until explicitly told to stop. As an example, consider sending the command to
+read at address 0x1000. In sequential mode, as long as the master keeps ticking
+SCK, the memory will return the bytes at 0x1000, 0x1001, 0x1002, and so on. This
+means you only need to pay the overhead of sending the command and address when
+you need to deviate from the sequential path - we'll see how this can be taken
+advantage of later in the article.</p>
+<h1>Area</h1>
+<p>With Tiny Tapeout you pay for tiles of space on the shared chip, so the more
+tiles you need to use the more you need to pay. This is already a pretty
+compelling reason to keep things minimal - as fun as designing a superscalar
+out-of-order processor is, we don't want to blow the bank.</p>
+<p>Given the 16b address space, going with a 16b register width seemed like the
+obvious choice. This keeps things simpler as a full address can be stored in a
+single register, and makes doing arithmetic a little less painful than when
+working with an 8b machine. Realistically, for a hobby processor operating at
+40MHz, the programs running on it won't be doing any serious large number
+crunching anyway, so this felt like the sweet spot.</p>
+<p>With that being said, it's inevitable that at some point there will be a need to
+do 32b arithmetic, so it was important to account for this in the design: there
+had to be an easy way to extend beyond 16b to perform 32b or larger operations,
+something like a carry flag.</p>
+<h1>Branching &amp; Redirection</h1>
+<p>Idli stores all of its instructions and data in a pair of
+attached SQI memories. During sequential execution of instructions, we can rely
+on the memories being in sequential mode to automatically increment the read
+address and provide the next packet of data without any input. This is a great
+benefit, as it means we don't need to explicitly request every instruction manually
+so can stream new data straight into the instruction decoder as it arrives.</p>
+<p>Unfortunately, programs do occasionally need to do something useful, and this
+often involves branching to another address in memory unconditionally or based
+on the evaluation of some condition. This results in a significant cost for
+serial memories, as for each redirection we need to:</p>
+<ol>
+<li>Toggle the chip select so the memory is ready to accept a new command.</li>
+<li>Send the new read command (8b).</li>
+<li>Send the new address to the memory (16b).</li>
+<li>Wait for the dummy cycle (8b).</li>
+<li>Receive the next 16b of instruction data.</li>
+</ol>
+<p>In SQI mode we transmit 4b per cycle, meaning we need to burn at least eight
+cycles every time we need to perform a branch or jump in the program. Not ideal!</p>
+<p>Idli works around this by allowing every instruction to be predicated, effectively
+allowing sequential execution of the program to continue while optionally skipping
+individual instructions based on some condition. This has fallen out of fashion
+in modern architectures (for good reason as it's a pain for out of order
+execution), but given this is very small in-order core it's a big win.</p>
+<p>With any instruction being able to be predicated, we can effectively reduce the
+branching penalty for cases where we want to conditionally execute certain
+instructions. For example, lets consider one common approach to compute the
+<a href="https://en.wikipedia.org/wiki/Greatest_common_divisor">greatest common divisor</a>,
+the <a href="https://en.wikipedia.org/wiki/Euclidean_algorithm#Implementations">Euclidean algorithm</a>:</p>
+<pre><code>def gcd(a, b):
+    while a != b:
+        if a &gt; b:
+            a -= b
+        else:
+            b -= a
+    return a
+</code></pre>
+<p>In Idli assembly, this could be written as:</p>
+<pre><code>gcd:                    # r1 = a, r2 = b
+    eqx     r1, r2      # if a == b:
+    ret.t               #   return a
+    ltu     r1, r2      # p = a &lt; b
+    cex     2           # (next two instructions predicated)
+    sub.t   r2, r2, r1  # if (p) b -= a
+    sub.f   r1, r1, r2  # if (!p) a -= b
+    b       @gcd        # goto gcd
+</code></pre>
+<p>We'll get into the details of what all of the instructions mean in a later
+article, but the important things to note at this stage are the <code>.t</code> and <code>.f</code>
+suffixes. These indicate the instruction should only be executed if the current
+predicate state is true or false respectively. Without this, we'd need to have
+a costly branch penalty in the loop to perform the correct subtraction, but thanks
+to predication we're only wasting a single instruction each time - a significant
+improvement!</p>
+<p>Of course, we can't avoid "real" branches such as running the loop iteration
+multiple times, but being able to make savings on all conditional execution is
+still absolutely worth having.</p>
+<p>Another small benefit of this approach is that we only actually need to have
+unconditional branches, as a conditional branch can just be a predicated
+unconditional branch. A minor but welcome encoding space saving!</p>
+<p>In many cases the branch condition can get quite complicated, so it's also
+important to have the ability to build up the expressions efficiently in the
+predicate register. This allows for performing a single branch on the final
+expression rather than multiple simpler branches, which should save on overall
+performance in most cases by minimising the number of required SQI redirections.</p>
+<p>Data and instructions are stored in the same memories, which means Idli also
+incurs a redirection penalty when performing data memory accesses. As such it made
+sense to include instructions that allow for loading or storing multiple registers
+from the same base address at once to amortise the cost of redirection.</p>
+<h1>Encodings</h1>
+<p>As discussed in the area section above, Idli has a 16b register width which
+implies a 16b datapath width. We also have the limitation of 4b per cycle on the
+memory interface; there isn't much point in going faster than the memory
+given our lack of a cache, so performing the 16b operations over four cycles with
+4b per cycle is a nice area saving. This can be synchronised inside the core with
+a 2b counter indicating which slice of a register is currently being processed.</p>
+<p>Given this, it made things simpler from an implementation perspective for
+the instruction encodings to also be 16b. This allowed for some simple pipelining,
+where the current 16b instruction executes over four cycles while the next 16b
+instruction is fetched from the memory. Sixteen bits is of course quite restrictive:
+that's not a lot of encoding space!</p>
+<p>One of the original goals for the architecture was to make it actually fun to use
+when working in assembly. While eight registers is somewhat reasonable, it isn't
+exactly what I'd call fun, so bumping up to sixteen seemed worth the sacrifice
+given the extra registers that became available. This also had the benefit of
+reducing the amount of spilling to memory that's required, which greatly
+enhances performance given the penalty of redirecting the serial memories.</p>
+<p>Out of the sixteen registers in the
+<a href="https://en.wikipedia.org/wiki/Register_file">register file</a>,
+three have special purposes:</p>
+<ol>
+<li><code>R0</code> is the zero register. Reads of this register always return zero, and
+   writes to it are discarded. This comes in handing for synthesising various
+   operations from the others, and also saves on some area as the register
+   doesn't need to exist beyond a tie-off in the RTL.</li>
+<li><code>R14</code> is the link register. This is implicitly updated by some branch and
+   jump instructions to the address of the instruction after the branch, allowing
+   for returning from function calls without needing to push to the stack.</li>
+<li><code>R15</code> is the <a href="https://en.wikipedia.org/wiki/Stack_register">stack pointer</a>.</li>
+</ol>
+<p>This meant registers needed to be encoded with 4b per register operand, and
+as such each three operand instruction takes up 1/16th of the encoding space.
+Ouch! This was mitigated to some extent by packing the instructions with
+fewer than three operands into their own subsets of the encoding space, as more
+of them could be crammed into the same number of bits. The load/store multiple
+instructions were also reduced in size by operating on register ranges rather
+than allowing for any combination.</p>
+<p>The <a href="https://en.wikipedia.org/wiki/Program_counter">program counter</a> is a special
+register that lives out side of the register file. This was always encoded
+implicitly to save space. Other special registers outside of the register
+file include the predicate and conditional execution state, which we'll cover in
+more detail in the next article.</p>
+<p>The need to pack immediate bits was avoided by treating the stack pointer in the
+final operand as a special value indicating that the following sixteen bits of
+data from the memory should be treated as an immediate.
+In this way the sixteen bits following the current instruction can be directly fed
+into the ALU input as the second source operand and no additional encoding space is
+consumed by the immediate forms of instructions. Of course, this does mean the
+stack pointer cannot be used in some scenarios, but given how unlikely this is to
+actually occur it seemed like a good trade off to make.</p>
+<h1>Conclusion</h1>
+<p>So in summary, we have an architecture with:</p>
+<ul>
+<li>Sixteen 16b registers. <code>R0</code> is the zero register <code>ZR</code>, <code>R14</code> is the link
+  register <code>LR</code>, and <code>R15</code> is the stack pointer <code>SP</code>. All other registers in the
+  register file are general purpose. The program counter <code>PC</code> is not part of the
+  register file.</li>
+<li>A 64K serial memory where each byte is sixteen bits with four bits processed
+  per cycle. High and low nibbles are physically stored in different memories
+  to allow for a faster core clock.</li>
+<li>A 4b serial datapath, processing a full 16b operation in four cycles.</li>
+<li>The ability to conditionally execute every instruction to minimise branch overheads
+  based on some saved predicate state.</li>
+<li>Load/store multiple register instructions to reduce the redirection overhead
+  when performing data accesses.</li>
+</ul>
+<p>Next time, we'll dig deeper into the details of the instruction set.</p>
+
+            <footer>
+                <p>Generated: 2026-04-19 16:17:29</p>
+                <p>&copy; Matt Woodhouse 2026</p>
+            </footer>
+        </article>
+    </body>
+</html>
