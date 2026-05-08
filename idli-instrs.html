@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fix=no">
+
+        <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16x16.png">
+        <link rel="stylesheet" href="/css/main.css">
+
+        <title>Idli: Instruction Set - Matt Woodhouse</title>
+    </head>
+    <body>
+        <div id="main-header">
+            <h1>Matt Woodhouse</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/about">About</a></li>
+                <li><a href="/now">Now</a></li>
+            </ul>
+        </nav>
+        <article>
+            <header>
+                <h1>Idli: Instruction Set</h1>
+                <div class="date-info">
+                    <p>Created: 2026-04-25, Updated: 2026-05-08</p>
+                </div>
+            </header>
+
+            <p>This article will be split into two main sections. First up I want to go through
+the instructions that are implemented in the current version of Idli and briefly
+describe how they work. After that I'd like to go through the things I'm not
+happy with and would like to change in the future.</p>
+<ul>
+<li><a href="#current">Current Instructions</a></li>
+<li><a href="#future">Future Improvements</a></li>
+<li><a href="#next">Next Steps</a></li>
+</ul>
+<div id="current"></div>
+<h1>Current Instructions</h1>
+<p>Let's look at the instructions as defined in the current version of the machine,
+loosely grouped together into functional categories. Each instruction is provided
+with its encoding and signature, with operand types indicated by the letter used:</p>
+<ul>
+<li><code>A</code> and <code>B</code> are standard register operands. <code>A</code> is typically a destination
+  while <code>B</code> is a source, but these rules are a little flexible for memory operations.</li>
+<li><code>C</code> is a register operand, except when the encoded  value is <code>R15</code> i.e. <code>SP</code>,
+  in which case the sixteen bits following the instruction are treated as an
+  immediate instead.</li>
+<li><code>N</code> is an unsigned integer indicating a general purpose input or output pin.</li>
+<li><code>M</code> is a conditional execution mask indicating how the instructions following
+  the current one should be predicated.</li>
+<li><code>R</code> and <code>S</code> indicate a range of registers <code>R..S</code> inclusive. This wraps around,
+  so <code>R10..R2</code> indicates <code>R10..R15</code> followed by <code>R0..R2</code>. An empty range cannot
+  be encoded: <code>R1..R1</code> is the same as just <code>R1</code>.</li>
+<li><code>J</code> is a four bit unsigned immediate used for system operations that modify the
+  count register.</li>
+</ul>
+<p>Now let's dig into the instructions. In no particular order:</p>
+<ul>
+<li><a href="#arith">Arithmetic</a></li>
+<li><a href="#logic">Logical</a></li>
+<li><a href="#shift">Shift</a></li>
+<li><a href="#cmp">Comparison</a></li>
+<li><a href="#branch">Control Flow</a></li>
+<li><a href="#mem">Memory Access</a></li>
+<li><a href="#sys">System</a></li>
+<li><a href="#io">IO</a></li>
+</ul>
+<div id="arith"></div>
+<h2>Arithmetic</h2>
+<pre><code>0000 AAAA BBBB CCCC     ADD A, B, C     # A = B + C
+0001 AAAA BBBB CCCC     SUB A, B, C     # A = B - C
+</code></pre>
+<p>Standard addition and subtraction operations. There is some redundancy here when
+<code>C</code> is an immediate but given we need both for when it's a register it isn't
+worth worrying about. Combining <code>ADD</code> with the zero register also gives us a
+couple of handy synonyms:</p>
+<pre><code>MOV A, C    -&gt;  ADD  A, ZR,  C
+NOP         -&gt;  ADD ZR, ZR, ZR
+</code></pre>
+<p>This also means the encoding of the canonical <code>NOP</code> is encoded as all zero, so
+if we happen to read some memory that's been cleared we won't do anything too
+unexpected.</p>
+<pre><code>1010 AAAA BBBB 1000     INC A, B    # A = B + 1
+1010 AAAA BBBB 1001     DEC A, B    # A = B - 1
+</code></pre>
+<p>Addition and subtraction of one is quite a common operation, but encoding this
+using the standard <code>ADD</code> and <code>SUB</code> instructions results in an extra sixteen bits
+of consumption. To avoid this overhead, <code>INC</code> and <code>DEC</code> were introduced. In the RTL
+these are implemented by setting the carry in to the ALU.</p>
+<pre><code>1100 AAAA ???0 CCCC     ADDPC A, C  # A = PC + C
+</code></pre>
+<p>We need a way to access information relative to the current program counter, and
+as <code>PC</code> isn't part of the register file a separate instruction is needed. This
+is essentially a branch instruction except the result is written to <code>A</code> instead
+of <code>PC</code>.</p>
+<div id="logic"></div>
+<h2>Logical</h2>
+<pre><code>0010 AAAA BBBB CCCC     AND  A, B, C    # A =  B &amp;  C
+0011 AAAA BBBB CCCC     ANDN A, B, C    # A =  B &amp; ~C
+0100 AAAA BBBB CCCC     OR   A, B, C    # A =  B |  C
+0101 AAAA BBBB CCCC     XOR  A, B, C    # A =  B ^  C
+1010 AAAA BBBB 1110     NOT  A, B       # A = ~B
+</code></pre>
+<p>The standard set of logical operations - there's not much to say here!</p>
+<p>One interesting point is that we need an actual instruction for logical negation,
+but not arithmetic negation which can be implemented as the synonym
+<code>SUB A, ZR, B</code>. To implement <code>NOT</code> as a synonym we'd need to have an all-ones
+register or use an immediate like <code>XOR A, B, 0xffff</code>. This would result in
+a double-width instruction due to the immediate, so it seemed worth including
+<code>NOT</code>, but given how infrequently it actually turns up perhaps it isn't worth the
+encoding space.</p>
+<p>There's also no point in having <code>NOT</code> take <code>C</code> instead of <code>B</code> as an immediate is
+always a full sixteen bits, so there's no situation where the negated form couldn't
+be encoded directly anyway. This also means we can perform logical negation on
+<code>SP</code>, but so far I haven't found a practical use for it.</p>
+<div id="shift"></div>
+<h2>Shift</h2>
+<pre><code>1010 AAAA BBBB 1010     SRL A, B    # A = { 1'b0, B[15:1]}
+1010 AAAA BBBB 1011     SRA A, B    # A = {B[15], B[15:1]}
+1010 AAAA BBBB 1100     ROR A, B    # A = {B[ 0], B[15:1]}
+1010 AAAA BBBB 1101     ROL A, B    # A = {B[14:0], B[15]}
+</code></pre>
+<p>Shifts in Idli are all a single bit for two reasons:</p>
+<ol>
+<li>Barrel shifters are quite expensive in terms of area and I wasn't sure it
+   would be worth the space.</li>
+<li>The encoding space is limited and having even more three-operation instructions
+   wouldn't fit.</li>
+</ol>
+<p>This does make performing multi-bit shifts quite painful, especially if you
+don't know the shift amount until runtime as this means every bit shifted will
+also incur a branch redirection penalty.</p>
+<p><code>SRL</code> and <code>SRA</code> can both shift via the internal carry register for performing shifts
+over integers larger than sixteen bits. Reviewing the implementation now I can't
+remember why I didn't also support this for <code>ROR</code> and <code>ROL</code>, so perhaps this is
+something to look at as an improvement.</p>
+<p>Given we only have single bit shifts, <code>LSL A, B</code> is implemented as the synonym
+<code>ADD A, B, B</code> to save on encoding space.</p>
+<div id="cmp"></div>
+<h2>Comparison</h2>
+<pre><code>1011 X000 BBBB CCCC     EQ{X}  B, C     # P =  (B == C)
+1011 X001 BBBB CCCC     NE{X}  B, C     # P =  (B != C)
+1011 X010 BBBB CCCC     LT{X}  B, C     # P =  (B &lt;  C) (signed)
+1011 X011 BBBB CCCC     LTU{X} B, C     # P =  (B &lt;  C) (unsigned)
+1011 X100 BBBB CCCC     GE{X}  B, C     # P =  (B &gt;= C) (signed)
+1011 X101 BBBB CCCC     GEU{X} B, C     # P =  (B &gt;= C) (unsigned)
+1011 X110 BBBB CCCC     ANY{X} B, C     # P = |(B &amp;  C)
+1011 X111 ??NN CCCC     INP{X} B, C     # P = PIN(N)
+</code></pre>
+<p>Idli provides a full suite of comparison operations. These all write their results
+to the predicate register <code>P</code>. Each instruction has two forms: standard and <code>X</code>.
+The <code>X</code> form of an instruction performs the update of <code>P</code> as normal, but also
+updates the <code>COND</code> register to predicate the following instruction such that it
+only runs if the result of the comparison is true. This gives us a couple of
+significant benefits:</p>
+<ol>
+<li>Code density is improved, as performing a comparison and updating <code>COND</code> are
+   performed in a single instruction rather than requiring an explicit update
+   via <code>CEX</code> (see next section for details on this instruction).</li>
+<li>There's no need to encode any conditional branch instructions, saving a chunk
+   of encoding space. Yes, we do need to encode two forms of every
+   comparison, but this allows us to predicate anything so is much more flexible.</li>
+</ol>
+<div id="branch"></div>
+<h2>Control Flow</h2>
+<p>There are two ways to modify control flow in Idli. The first are branches and
+jumps:</p>
+<pre><code>1100 ??00 ???1 CCCC     B   C       # PC += C
+1100 ??01 ???1 CCCC     J   C       # PC  = C
+1100 ??10 ???1 CCCC     BL  C       # LR  = NEXT_PC, PC += C
+1100 ??11 ???1 CCCC     JL  C       # LR  = NEXT_PC, PC  = C
+</code></pre>
+<p>Branches add an offset to the program counter while jumps overwrite it directly.
+The link register is also optionally updated to the PC following the branch or
+jump, allowing for return from function calls without needing to access the
+stack. The <code>RET</code> instruction is implemented as the synonym <code>J LR</code>.</p>
+<p>The second form of control flow modification is predication via the <code>COND</code>
+register. This can be implicitly updated via the <code>X</code> comparisons discussed above
+or by directly writing it using <code>CEX</code>.</p>
+<pre><code>1110 ???0 MMMM MMMM     CEX M       # COND = M
+</code></pre>
+<p>The <code>M</code> operand holds a mask indicating how the following instructions should be
+predicated. For each bit <code>i</code>, if <code>M[i]</code> matches the value of <code>P</code> the instruction
+will be executed, otherwise it will be skipped. This provides an extremely
+flexible way to avoid the costly branch redirection penalty when running short
+conditional sequences.</p>
+<p>The mask is indicated in assembly language by adding a <code>.T</code> or <code>.F</code> suffix
+to the instructions following the <code>CEX</code>, which itself indicates the number
+of instructions to be predicated. For example:</p>
+<pre><code>CEX     4
+ADD.T   R1, R2, R3      # IF( P): R1 = R2  + R3
+ADD.F   R1, R4, R5      # IF(!P): R1 = R4  + R5
+INC.F   R2, R10         # IF(!P): R2 = R10 + 1
+AND.T   R2, R2, R11     # IF( P): R2 = R2  &amp; R11
+</code></pre>
+<p>In this case, if <code>P</code> was true then the first and final instruction would be run,
+otherwise the second and third would be executed.</p>
+<div id="mem"></div>
+<h2>Memory Access</h2>
+<p>There are a few different ways of accessing memory in Idli. First up are the
+standard load and store instructions:</p>
+<pre><code>0110 AAAA BBBB CCCC     LD A, B, C      # A = [B + C]
+0111 AAAA BBBB CCCC     ST A, B, C      # [B + C] = A
+</code></pre>
+<p>These allow for indexing into memory relative to a base register. As Idli has
+sixteen bit bytes to match the register width, as
+<a href="/idli-arch">discussed previously</a>, we don't need to support different widths
+and sign or zero extension.</p>
+<p>Auto-incrementing load and store operations are also supported:</p>
+<pre><code>1010 AAAA BBBB 0000     LD+ A, B        # A = [B++]
+1010 AAAA BBBB 0001     ST+ A, B        # [B++] = A
+1010 AAAA BBBB 0010     +LD A, B        # A = [++B]
+1010 AAAA BBBB 0011     +ST A, B        # [++B] = A
+1010 AAAA BBBB 0100     LD- A, B        # A = [B--]
+1010 AAAA BBBB 0101     ST- A, B        # [B--] = A
+1010 AAAA BBBB 0110     -LD A, B        # A = [--B]
+1010 AAAA BBBB 0111     -ST A, B        # [--B] = A
+</code></pre>
+<p>These allow for incrementing or decrementing the base register either before or
+after the memory is accessed. This is particularly common in loops and can often
+save us from needing to increment base addresses manually. In the RTL writeback of the base
+register is performed before the memory access, so stores of the base register
+will show the updated value and loads will overwrite it.</p>
+<p>As Idli uses serial memories which share instructions and data, each access
+requires a redirection to perform the access followed by a redirection back to
+the <code>PC</code> to continue execution. As such, load and store multiple operations are
+also provided to allow for batching accesses together to minimise the overhead:</p>
+<pre><code>1000 RRRR SSSS BBBB     LDM R..S, B     # R..S = [B, B + 1, ...]
+1001 RRRR SSSS BBBB     STM R..S, B     # [B, B + 1, ...] = R..S
+</code></pre>
+<p>These both take register ranges, and take advantage of the sequential mode of
+the attached memories to perform multiple read or write operations with a single
+redirection. This greatly enhances performance for batch memory access operations
+such as <code>memcpy</code>.</p>
+<p>A couple of synonyms are also provided for common stack operations:</p>
+<pre><code>PUSH A      -&gt;  -ST A, SP
+POP  A      -&gt;  LD+ A, SP
+</code></pre>
+<div id="sys"></div>
+<h2>System</h2>
+<p>System operations are a catch-all group for things that didn't really fit into
+any other category. The boring ones are for moving the predicate register <code>P</code>
+into a general purpose register:</p>
+<pre><code>1101 ???1 ??10 AAAA     GETP    A       # A = P
+1101 ???1 ??11 CCCC     PUTP    C       # P = C &amp; 1
+</code></pre>
+<p>More interesting are the operations that update the <code>COUNT</code> register, which are
+used to modify the behaviour of a number of instructions following the update.</p>
+<pre><code>1110 ???1 ??00 JJJJ     CARRY   J       # COUNT = {CARRY, J}
+1110 ???1 ??01 JJJJ     ANDP    J       # COUNT = { ANDP, J}
+1110 ???1 ??10 JJJJ     ORP     J       # COUNT = {  ORP, J}
+</code></pre>
+<p>Let's look at <code>CARRY</code> first. By default the processor clears the internal carry
+flag after each operation, but this instruction allows us to override this
+behaviour and propagate the carry forward for <code>J</code> instructions instead.
+For example, if <code>R2..R5</code> and <code>R6..R9</code> contain two 64b numbers, we can perform
+a full 64b add efficiently by writing</p>
+<pre><code>CARRY   4
+ADD     R2, R2, R6
+ADD     R3, R3, R7
+ADD     R4, R4, R8
+ADD     R5, R5, R9
+</code></pre>
+<p>This saves us from needing to encode a specific add with carry or subtract with
+borrow. It's also worth noting that <code>COUNT</code> is a separate register to <code>COND</code>,
+allowing for both to be used simultaneously. This can be useful in a number of
+scenarios such as implementing a 32b soft multiply.</p>
+<p><code>ANDP</code> and <code>ORP</code> are used to efficiently build up complex boolean expressions
+by changing how <code>P</code> is updated. By default comparisons replace the value of the
+predicate register, but these allow for the result to be ANDed or ORed into <code>P</code>
+instead. Let's say you want to branch if the following condition is true:
+<code>(R1 == R2 || R3 == R4) &amp;&amp; (R5 &gt;= R6 || R7 != R8 || R9 == R10)</code>. We could write
+this in Idli assembler as:</p>
+<pre><code>EQ      R1, R2      # P = R1 == R2
+ORP     1
+EQ      R3, R4      # P |= R3 == R4
+GETP    R12         # TMP = P
+GE      R5, R6      # P = R5 &gt;= R6
+ORP     2
+NE      R7, R8      # P |= R7 != R8
+EQ      R9, R10     # P |= R9 == R10
+ANDP    1
+NEX     R12, ZR     # IF (P &amp;&amp; TMP):
+B.T     @TARGET     #   GOTO TARGET
+</code></pre>
+<p>This saves us from writing out a number of conditional branches, improving both
+performance and code density.</p>
+<div id="io"></div>
+<h2>IO</h2>
+<p>Communication with the outside world can be performed via general purpose IO
+pins or a built-in
+<a href="https://en.wikipedia.org/wiki/Universal_asynchronous_receiver-transmitter">UART</a>.</p>
+<pre><code>1101 ???0 00NN AAAA     IN      A, P    # A = PIN(N)
+1101 ???0 01NN CCCC     OUT     N, C    # PIN(N,  C &amp; 1)
+1101 ???0 10NN CCCC     OUTN    N, C    # PIN(N ~(C &amp; 1))
+1101 ???0 11NN 0000     OUTP    N       # PIN(N, P)
+</code></pre>
+<p>Pin instructions allow for getting or setting an arbitrary value on each of the
+four general purpose input or output pins from either a general purpose or
+predicate register. <code>OUTN</code> primarily exists to allow for writing a one to an
+output pin via <code>OUTN N, ZR</code> rather than needing in incur the sixteen bit immediate
+cost of writing <code>OUT N, 1</code>.</p>
+<pre><code>1101 ???1 ??00 AAAA     URX     A       # A = UART()
+1101 ???1 ??01 CCCC     UTX     C       # UART(C)
+</code></pre>
+<p>These instructions allow for receiving (RX) or transmitting (TX) a sixteen bit
+value across the UART interface. Each read or write is split into two eight bit
+transactions with a single stop bit. The low eight bits are processed in the
+first transaction.</p>
+<p>Idli has a single sixteen bit buffer to hold incoming data from the UART. If a
+<code>URX</code> is performed and the buffer is empty, the processor will stall until a
+full sixteen bits of data have been received. Flow control is not implemented, so
+if the buffer is full and additional data is sent into the core it will be
+silently dropped.</p>
+<div id="future"></div>
+<h1>Future Improvements</h1>
+<p>Since implementing the latest version of Idli I've been considering what I don't
+like and having ideas about how to improve it. A few these are listed below:</p>
+<ul>
+<li><a href="#branch-link">Remove branch/jump without link</a></li>
+<li><a href="#andn">Remove ANDN</a></li>
+<li><a href="#psr">Add a Program Status Register</a></li>
+<li><a href="#cex">Improve CEX Syntax &amp; Checking</a></li>
+<li><a href="#mul">Multiply Acceleration</a></li>
+<li><a href="#io-unify">Unify IO Instructions</a></li>
+<li><a href="#imm-wb">Add LD/ST with Immediate Writeback</a></li>
+<li><a href="#mem-pc">Add PC-relative LD/ST</a></li>
+<li><a href="#getputp">Rework GETP and PUTP</a></li>
+<li><a href="#rotc">Add Rotate Through Carry</a></li>
+<li><a href="#count-size">Reduce COUNT Size</a></li>
+<li><a href="#inp-replace">Replace INP{X} With Something More Useful</a></li>
+</ul>
+<div id="branch-link"></div>
+<h2>Remove Branch and Jump Without Link</h2>
+<p>Given writes to the zero register are ignored <code>B</code> and <code>J</code> can be implemented as
+synonyms instead of requiring their own encodings:</p>
+<pre><code>B   C       -&gt;  BL  ZR, C
+J   C       -&gt;  JL  ZR, C
+</code></pre>
+<p>This saves a little encoding space and simplifies decode without any downsides
+so it seems like an obvious change to make.</p>
+<p>In the current implementation <code>LR</code> is also baked into the RTL as a constant so
+it can be implicitly updated. Having the link register defined has certain benefits
+for high-performance microarchitectures (e.g. link register caching), but given
+Idli is specifically optimised as a low-area in-order core this isn't really
+relevant. I think I'll keep <code>R14</code> defined as <code>LR</code> just for convenience use with
+synonyms like <code>RET</code>, but there will no longer be anything special about it in
+the microarchitecture.</p>
+<div id="andn"></div>
+<h2>Remove ANDN</h2>
+<p>In the real world <code>ANDN</code> is almost always used with an immediate to e.g. mask
+off the bottom bits of a register for address alignment. In Idli, all immediates
+passed into the ALU are a full sixteen bits, so there's no penalty for writing
+<code>ANDN R1, R2, 0x7</code> as <code>AND R1, R2, 0xfff8</code> instead.</p>
+<p>Given this, keeping <code>ANDN</code> doesn't seem like it's worth the encoding space of a
+three-operand instruction, so I think it makes sense to remove it. This does mean
+an <code>ANDN</code> with a register operand will need one extra instruction to negate the
+mask, but it's so infrequent that I'd rather gain back the encoding space for
+something more useful.</p>
+<div id="psr"></div>
+<h2>Add a Program Status Register</h2>
+<p>In the current machine there's no way to read back <code>COND</code>, <code>COUNT</code>, or the carry
+flag. These could be combined with <code>P</code> into a Program Status Register, <code>PSR</code>,
+which can then be accessed with an instruction like <code>GETPSR A</code>. This would also
+allow the random test generator to check previously inaccessible state,
+strengthening verification.</p>
+<p>I'm not sure yet if a <code>PUTPSR</code> should also be added. This would be useful for
+saving/restoring when context switching, but this wasn't ever something that was
+originally intended to be supported and I'm not sure I want to deal with the
+edge cases it could introduce e.g. updating <code>COND</code> with a value derived at
+runtime.</p>
+<div id="cex"></div>
+<h2>Improve CEX Syntax &amp; Checking</h2>
+<p>In the current assembler a <code>CEX</code> instruction is followed by a number indicating
+the number of instructions after it that are predicated, with the predication
+mask deduced by <code>.T</code> and <code>.F</code> suffixes of those instructions following it. This
+complicates the assembler as it needs to look ahead to deduce the value of <code>M</code>,
+so an improvement would be to specify the mask directly as part of the <code>CEX</code>
+itself, then assert that this matches the suffix of the followers. For example:</p>
+<pre><code>OLD                         NEW
+------------------          ------------------
+CEX     2                   CEX     TF
+SUB.T   R1, R2, R3          SUB.T   R1, R2, R3
+SUB.F   R2, R1, R3          SUB.F   R2, R1, R3
+</code></pre>
+<p>This should also help to catch mistakes where a <code>.T</code> or <code>.F</code> suffix has been
+misplaced or unintentionally inverted.</p>
+<p>Another common case is to predicate a group of instructions in the same way, so
+to make this easier to work with it would be nice for the assembler to support
+Python-like replication syntax. This would allow for writing <code>CEX T*5</code> instead
+of <code>CEX TTTTT</code> which is much easier to read.</p>
+<p>The assembler should also be enhanced to check that a branch instruction can
+only appear at the end of a predicated block. Branching away mid-predication
+leads to undefined behaviour, as the instructions at the branch
+target won't have been written with predication in mind, so this just catches a
+common source of error at assembly time rather than needing runtime debug.</p>
+<p>An alternative to this would be to define that taken branches clear <code>COND</code>. This
+would allow for writing things like:</p>
+<pre><code>CEX     TTFF
+MOV.T   R1, R2
+B.T     @TARGET1
+MOV.F   R1, R4
+B.F     @TARGET2
+</code></pre>
+<p>I could see this being useful so it may be preferable to take this approach. At
+this stage though more thought is required!</p>
+<div id="mul"></div>
+<h2>Multiply Acceleration</h2>
+<p>The current machine has no multiply instruction, which makes multiplying two
+numbers exceedingly slow. An example of a soft multiply implemented in Idli
+assembler is part of the <a href="https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash">FNV-1a</a>
+hash algorithm (see <a href="https://github.com/theultimat/idli-v2/blob/main/asm/fnv1a.asm#L20">here</a>
+for the full listing):</p>
+<pre><code>2:  eq      r5, zr              # done = prime0 == 0
+    andp    1                   # (and next compare)
+    eq      r6, zr              # done &amp;= prime1 == 0
+    cex     3                   # if p:
+    mov.t   r1, r8              #   hash0 = mul0
+    mov.t   r2, r9              #   hash1 = mul1
+    b.t     @1b                 #   goto 1b
+    any     r5, 0x1             # p = (prime0 &amp; 1) != 0
+    cex     3                   # if p:
+    carry.t 2                   #   (sticky carry)
+    add.t   r8, r8, r1          #   c, mul0 = mul0 + hash0
+    add.t   r9, r9, r2          #   mul1 = mul1 + hash1 + c
+    carry   2                   # (shift through carry)
+    srl     r6, r6              # c, prime1 &gt;&gt;= 1
+    srl     r5, r5              # prime0 = (c &lt;&lt; 15) | (prime0 &gt;&gt; 1)
+    carry   2                   # (shift through carry)
+    sll     r1, r1              # c, hash0 &lt;&lt;= 1
+    sll     r2, r2              # hash1 = (hash1 &lt;&lt; 1) | c
+    b       @2b                 # goto 2b
+</code></pre>
+<p>Not very performant! So how can we make this faster?</p>
+<p>The most obvious answer is to introduce a <code>MUL A, B, C</code> instruction that writes
+the low sixteen bits of the product of <code>B</code> and <code>C</code> to <code>A</code>. This is obviously a
+huge win for performance and code density, but multiplier hardware consumes a
+significant amount of area. Given Idli is four bit serial it may not be too bad,
+but I need to do some synthesis experiements to know for sure.</p>
+<p>An alternative way to add further acceleration is adding a barrel shifter. This
+would allow for fast multiplies by powers of two, from which other multiplications
+could be composed. Again, I'm not sure if I'd like to spend the area on the
+introduction of a shifter, so some further experimentation is needed. This also
+consumes a significant amount of encoding space, as each shift operation now
+takes a full three operands.</p>
+<p>Another possibility would be to introduce instructions that always shift by
+four bits. This would save on encoding space and could be implemented relatively
+efficiently in the hardware as the core is already operating on four bit slices.
+Right shifts fall out naturally from this, as we can nudge each four bit slice
+further down the register on each tick. Left shits are unfortunately harder, as we need
+somewhere to store the slice from the previous cycle after writing the current
+one. Introducing a four bit flop to save the state will definitely be better
+for area than the multiply or barrel shifter, but whether it's worth it for the
+performance gain requires some experimentation.</p>
+<div id="io-unify"></div>
+<h2>Unify IO Instructions</h2>
+<p>It would make the instruction set cleaner to only have two instructions of non-memory
+IO which operate on their own address space: <code>IN A, F</code> reads from IO address
+<code>F</code> into <code>A</code>, and <code>OUT F, P</code> performs the opposite. <code>F</code> could be an eight bit
+address space indicating some kind of input/output device. To match the
+capabilities of the current machine, this could be defined as:</p>
+<pre><code>7   ???
+6   ???
+5   ???
+4   UART
+3   GPIO_3
+2   GPIO_2
+1   GPIO_1
+0   GPIO_0
+</code></pre>
+<p>The original UART and pin instructions can then be defined as synonyms, and we
+also have space for three more IO interfaces such as SPI or I2C. This also
+gives a more uniform encoding format for the IO instructions, which should help
+reduce area by being easier to decode.</p>
+<p>The only IO functionality this loses is reading or writing the predicate
+register directly to a pin at the cost of an extra instruction to move <code>P</code>
+between the registers. Given how infrequently this actually comes up in
+practice I think it's a good trade off.</p>
+<div id="wb-imm"></div>
+<h2>Add LD/ST with Immediate Writeback</h2>
+<p>The original design for Idli had writeback memory access instructions that took
+a <code>C</code> operand, allowing for an arbitrary offset to be used. I wasn't able to fit
+this into the encoding space, hence the current <code>LD+</code> and <code>LD-</code> instructions that
+have a fixed implicit offset of one.</p>
+<p>Having since though about it more, I realised the variable offset versions of
+the instructions can be brought back by enforcing that the offset is always an
+immediate. These could be encoded as</p>
+<pre><code>1011 AAAA BBBB 1000     LD!     A, B, I     # A = [B], B += I
+1011 AAAA BBBB 1001     ST!     A, B, I     # [B] = A, B += I
+1011 AAAA BBBB 1010     !LD     A, B, I     # B += I, A = [B]
+1011 AAAA BBBB 1011     !ST     A, B, I     # B += I, [B] = A
+</code></pre>
+<p>This would work by essentially having an implicit <code>C=SP</code> operand, meaning these
+instructions would always be guaranteed to have a sixteen bit immediate offset.
+We don't really lose anything here in practice, as almost every case where writeback
+is desired would be with an immediate offset anyway.</p>
+<p>Even with the introduction of the variable offset writebacks, I think it's still
+worth keeping the existing <code>LD+</code> style of instruction as an immediate of one is
+an extremely common case, so the encoding space cost seems worth the code
+density gain.</p>
+<div id="mem-pc"></div>
+<h2>Add PC-relative LD/ST</h2>
+<p>It's a common operation to want to load/store data relative to the current
+program counter. In fact, <a href="https://www.bitsnbites.eu/mrisc32-stabilizing-the-base-architecture/">one analysis</a>
+of the original <a href="https://en.wikipedia.org/wiki/Quake_(video_game)">Quake</a>
+found that over 10% of the instructions in the binary used program counter
+relative addressing. Of course, here's no way we'll be running Quake on Idli,
+but the point is that the operation is common enough that providing some amount
+of hardware support for it is desirable.</p>
+<p>In the current version of Idli, this would be achieved by first
+performing an <code>ADDPC</code> to get the final address, followed by the actual load or
+store instruction to access the data. This means if we want to perform a PC
+relative load there's always at minimum a two instruction sequence:</p>
+<pre><code>addpc   r2, @data
+ld      r1, r2, zr
+</code></pre>
+<p>Adding PC-relative load/store instructions would allow for folding these two
+instructions into one. If these instructions also perform writeback, then we
+also gain the benefit of saving the address to perform further relative accesses
+without the immediate overhead.</p>
+<pre><code>!LDPC   A, B, I
+!STPC   A, B, I
+LDPC!   A, B, I
+STPC!   A, B, I
+</code></pre>
+<p>These would work similarly to the implicit immediate writeback instructions,
+except the address update is performed as <code>B = PC + I</code> instead of <code>B + I</code>. For
+example, if we had a structure containing three integers at address <code>data</code> we
+could load all the struct members as follows:</p>
+<pre><code>!ldpc   r1, r4, @data
++ld     r2, r4
++ld     r3, r4
+</code></pre>
+<p>Non-writeback synonyms could be defined with the address register as <code>ZR</code>:</p>
+<pre><code>LDPC    A, I    -&gt;  !LDPC A, ZR, I
+STPC    A, I    -&gt;  !STPC A, ZR, I
+</code></pre>
+<p>I'm not sure how useful the post-writeback variants of PC-relative accesses are,
+as this would mean we access data at <code>PC + I</code> but write back <code>PC</code>, so these may
+be removed if I can think of some better use for the encoding space.</p>
+<div id="getputp"></div>
+<h2>Rework GETP and PUTP</h2>
+<p>There's no actual need to encode <code>PUTP</code> in the instruction set as it can always
+be replaced by a comparison instruction instead:</p>
+<pre><code>PUTP    1       -&gt;      EQ  ZR, ZR
+PUTP    0       -&gt;      NE  ZR, ZR
+PUTP    R1      -&gt;      NE  R1, ZR
+</code></pre>
+<p><code>GETP</code> is a little more complicated. An initial idea was to conditionally take
+the value of <code>P</code> by incrementing the zero register, but this would actually
+require a three instruction sequence:</p>
+<pre><code>mov     r1, zr      # tmp = 0
+cex     1           # if p:
+inc.t   r1, r1      #   tmp = 1
+</code></pre>
+<p>If <code>GETPSR</code> is added this could be reduced to two instructions with a <code>GETPSR</code>
+and <code>AND</code> to extract the bottom bit. To further reduce the instruction count to
+one we'd need an instruction like a conditional move or select that both reads
+the current predicate state and always writes a value into the destination
+register even when the predicate is false. An example instruction could be
+predicated increment <code>PINC A, B</code> which would be implemented as:</p>
+<pre><code>A = P ? (B + 1) : B
+</code></pre>
+<p>Allowing <code>GETP</code> to be implemented as a synonym:</p>
+<pre><code>GETP    A       -&gt;  PINC    A, ZR
+</code></pre>
+<p>This is more flexible than <code>GETP</code> itself as <code>B</code> could be anything, but I'm not
+sure how useful it'll be given in general to perform a conditional increment
+you would typically set <code>P</code> immediately before, in which case an <code>X</code> comparison
+could be used instead. Perhaps a masked form of <code>GETPSR</code> would be more useful,
+combining it with an <code>AND</code>. More thought is needed!</p>
+<div id="rotc"></div>
+<h2>Add Rotate Through Carry</h2>
+<p>In the current machine it's possible to shift through the carry flag, but not to
+rotate. There isn't any reason why this shouldn't be possible, so it would be
+useful to support rotate through carry for more efficient rotations of operands
+with more than sixteen bits.</p>
+<div id="count-size"></div>
+<h2>Reduce COUNT Size</h2>
+<p>In the current machine <code>COUNT</code> is four bits, allow for the operation to apply to
+up to fifteen instructions. In real use counts above four are rarely
+needed, so it may be worth reducing the counter to two bits instead and defining
+a value of zero to be interpreted as four.</p>
+<p>This would save some area and a chunk of encoding space, while still allowing for
+processing 64b operands by linking together four operations with a <code>CARRY 4</code>.</p>
+<div id="inp-replace"></div>
+<h2>Replace INP{X} With Something More Useful</h2>
+<p>These instructions were added to allow for directly reading an input pin into
+<code>P</code> and using it in a condition, but in practice this is rarely needed so it's hard
+to justify the consumed encoding space.</p>
+<p>Instead, it would be more useful to add an extra comparison operation that takes
+the <code>B</code> and <code>C</code> operands. One that would be useful is <code>ALL</code> to check whether
+all the bits under the mask are set. This is slightly more complicated to
+implement in the RTL than <code>ANY</code>, but is probably useful enough to merit inclusion
+anyway. I'm not completely sold on <code>ALL</code> yet though, so if I can think of a
+comparison operation that's more useful then that'll be added instead.</p>
+<div id="next"></div>
+<h1>Next Steps</h1>
+<p>We've now gone through the current state of Idli and the changes to the instruction
+set that I'd like to make going forward, so I think the next step should be to
+start on the next version of the core.</p>
+<p>I'd like to take a different approach to the RTL this time, starting with the
+UART interface, as this should allow for seeing something working on an FPGA as
+soon as possible which will make the iterative process of implementing and debugging
+the rest of the core much easier.</p>
+<p>It would also be nice to have some formal verification this time around,
+although I'm not too sure how much of SystemVerilog assertions are supported by
+the open source tooling so some concessions may need to be made.</p>
+<p>Either way, the first step will be to create the new repository, start on the
+assembler, and implement a behavioural model. More on this coming soon!</p>
+
+            <footer>
+                <p>Generated: 2026-05-08 18:13:49</p>
+                <p>&copy; Matt Woodhouse 2026</p>
+            </footer>
+        </article>
+    </body>
+</html>

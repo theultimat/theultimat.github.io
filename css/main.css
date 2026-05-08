@@ -101,7 +101,8 @@ h1 {
 }
 
 h2 {
-    font-size: 1.25em;
+    font-size: 1.5em;
+    word-spacing: .04em;
 }
 
 a {
@@ -131,11 +132,11 @@ p, li {
 hr {
     border: none;
     border-bottom: 2px dotted var(--colour-hl);
-    margin: 1.5em 2em;
+    margin: 1.75em 2em;
 }
 
 pre {
-    margin: 1.5em 1em;
+    margin: 1.75em 1em;
     padding: 1em;
     background: var(--colour-fg);
     color: var(--colour-bg);
