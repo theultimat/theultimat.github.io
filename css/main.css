@@ -21,18 +21,6 @@
                    arial,
                    sans-serif;
 
-    --font-quote: Iowan Old Style,
-                  Apple Garamond,
-                  Baskerville,
-                  Times New Roman,
-                  Droid Serif,
-                  Times,
-                  Source Serif Pro,
-                  serif,
-                  Apple Color Emoji,
-                  Segoe UI Emoji,
-                  Segoe UI Symbol;
-
     --font-title: var(--font-normal);
 
     --font-mono: Menlo,
@@ -51,6 +39,7 @@ body {
     color: var(--colour-fg);
     font-family: var(--font-normal);
     font-size: 1.1em;
+    padding: 1em;
 }
 
 h1, h2, h3 {
@@ -94,11 +83,16 @@ nav {
         justify-content: center;
         list-style-type: none;
         margin: 0;
+        padding: 0;
+    }
+
+    li {
+        padding: 1em 2em;
+        text-align: center;
     }
 
     a {
         display: inline-block;
-        padding: 1em 2em;
     }
 }
 
